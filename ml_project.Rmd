@@ -1,0 +1,197 @@
+---
+title: "Project in ML"
+author: "Silje Marie Anfindsen"
+date: "5/5/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(e1071)
+library(ggplot2)
+library(GGally)
+library(class)
+library(randomForest)
+library(reshape2)
+library(caret)
+
+```
+
+Apply an standard kernel method (SVM, kRR, kPCA, ...) to a specific problem of your interest, with comparison to other approaches.
+The focus is on the application
+
+```{r cars}
+id <- "1Fv6xwKLSZHldRAC1MrcK2mzdOYnbgv0E"  # google file ID
+d.diabetes <- dget(sprintf("https://docs.google.com/uc?id=%s&export=download", 
+    id))
+d.train = d.diabetes$ctrain
+d.test = d.diabetes$ctest
+
+#make diabetes a factor variable
+d.train$diabetes <- as.factor(d.train$diabetes)
+d.test$diabetes <- as.factor(d.test$diabetes)
+
+plot(d.train)
+```
+```{r svm}
+
+set.seed(10111)
+start_time <- Sys.time()
+
+#10-fold CV to test model fit svm radial boundary with different parameters 
+cv.radial <- tune(svm, diabetes ~., data = d.train, kernel = "radial",
+                  ranges = list(cost = c(0.1,1,10,100,1000), gamma = c(0.5,1,2,3,4) ))
+end_time <- Sys.time()
+end_time - start_time
+#plot different values for the two hyperparameters
+svm.performance <- cv.radial$performances
+svm.performance$cost <- as.factor(svm.performance$cost)
+ggplot(svm.performance, aes(x=gamma,y=error, color=cost)) +
+  geom_line()
+
+#ggpairs(d.train, aes(colour = diabetes, alpha = 0.4))
+
+#fit new models with the optimalized parameters from CV
+bestmod.radial = cv.radial$best.model 
+
+# Predict the response for the test set  
+pred.rad = predict(bestmod.radial, newdata = d.test)
+
+# Confusion tables (0: no diabetes, 1: diabetes) 
+t <- table(Prediction = pred.rad, Truth = d.test$diabetes)
+t
+#can calculate sensitivity and specificity later
+svm_acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
+svm_acc
+```
+ To get an idea on how C and sigma influence the training set accuracy, we plot the cross-validation accuracy as a function of C, with separate lines for each value of sigma.
+ 
+
+We will now compare the performance of the support vector classifier and support vector machine with a new method: logistic regression. As we have observed above, our data seems to performe well when being classified with a linear decision boundary. Logistic regression models the probability that the response belongs to one of the two classes, producing a linear decision boundary. Therefore this method seems to be a good choice for our data.
+
+```{r logistic regression}
+#fit a logistic regression model using training data
+start_time <- Sys.time()
+
+glm.fit <- glm(diabetes ~ .,data=d.train, family="binomial") #predict the response using testing data
+end_time <- Sys.time()
+end_time - start_time
+glm.probs <- predict(glm.fit, newdata=d.test, type="response")
+
+#sort the probabilities for whether the observations are < or > than p = 0.5
+glm.pred = rep("0",length(d.test$diabetes)) 
+#create vector of nr. of elements = dataset 
+glm.pred[glm.probs>0.5]="1"
+#confusion table
+table(Prediction = glm.pred, Truth = d.test$diabetes)
+glm_ACC <- 100 * sum(d.test$diabetes == glm.pred)/NROW(d.test$diabetes)
+glm_ACC
+```
+
+
+In logistic regression all observations contribute to the decision boundary, while for SVMs, only the support vectors (the points closest to the decision boundary) contribute to the margin. A consequence of this is that LR is more sensitive to outliers than SVM. For classes that are well separeted SVM tend to perform better than LR, while in more overlapping regimes we usually prefer LR. We also know that logistic regression produces probabilistic values, while SVM produces binary values. This can be an advantage if we want an estimation rather than just the resulting class for each observation.
+
+
+```{r}
+start_time <- Sys.time()
+cv.knn <- tune.knn(y=d.train$diabetes,x=d.train[,2:8], data = d.train,k = 1:100, tunecontrol=tune.control(sampling="cross"), cross=10 )
+end_time <- Sys.time()
+end_time - start_time
+plot(cv.knn)
+cv.knn$best.parameters
+
+knn.fit <- cv.knn$best.model
+
+#Summarize the resampling results set
+pred.knn <- knn(train=d.train, test=d.test,cl=d.train$diabetes, k=cv.knn$best.parameters)
+
+# Confusion tables (0: no diabetes, 1: diabetes) 
+table(Prediction = pred.knn, Truth = d.test$diabetes)
+
+knn_ACC <- 100 * sum(d.test$diabetes == pred.knn)/NROW(d.test$diabetes)
+knn_ACC
+
+```
+
+```{r}
+#randomforest
+rf.diabetes = randomForest(diabetes ~ ., data = d.train)
+pred.rf= predict(rf.diabetes, newdata=d.test)
+rf_table <- table(prediction=pred.rf, Truth=d.test$diabetes)
+rf_ACC <- 100 * sum(d.test$diabetes == pred.rf)/NROW(d.test$diabetes)
+```
+
+```{r}
+control <- trainControl(method="repeatedcv", number=10, repeats=3)
+# CART
+set.seed(7)
+fit.cart <- train(diabetes~., data=d.train, method="rpart", trControl=control)
+# LDA
+set.seed(7)
+fit.lda <- train(diabetes~., data=d.train, method="lda", trControl=control)
+# SVM
+set.seed(7)
+fit.svm <- train(diabetes~., data=d.train, method="svmRadial", trControl=control)
+# kNN
+set.seed(7)
+fit.knn <- train(diabetes~., data=d.train, method="knn", trControl=control)
+# Random Forest
+set.seed(7)
+fit.rf <- train(diabetes~., data=d.train, method="rf", trControl=control)
+# collect resamples
+results <- resamples(list(CART=fit.cart, LDA=fit.lda, SVM=fit.svm, KNN=fit.knn, RF=fit.rf))
+```
+
+```{r}
+	
+# summarize differences between modes
+summary(results)
+````
+
+This is a useful way to look at the spread of the estimated accuracies for different methods and how they relate
+
+```{r}
+# box and whisker plots to compare models
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+bwplot(results, scales=scales)
+
+```
+Note that the boxes are ordered from highest to lowest mean accuracy. I find it useful to look at the mean values (dots) and the overlaps of the boxes (middle 50% of results).
+
+DENSITY PLOTS
+You can show the distribution of model accuracy as density plots. This is a useful way to evaluate the overlap in the estimated behavior of algorithms.
+```{r}
+
+# density plots of accuracy
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+densityplot(results, scales=scales, pch = "|")
+```
+I like to look at the differences in the peaks as well as the spread or base of the distributions.
+
+```{r}
+
+# difference in model predictions
+diffs <- diff(results)
+# summarize p-values for pair-wise comparisons
+summary(diffs)
+```
+
+
+```{r}
+
+accuracy_variables = names(results$values)[grepl("Accuracy", names(results$values))]
+plotdf = melt(results$values[, c('Resample', accuracy_variables)],
+              id = "Resample", value.name = "Accuracy", variable.name = "Model")
+plotdf$Model = gsub("~.*","", plotdf$Model)
+
+ggplot() +
+  geom_boxplot(data = plotdf, aes(x = Model, y = Accuracy, color = Model)) +
+  ggtitle('Resampled accuracy for machine learning models estimated') + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
+  labs(x = NULL, color = NULL) +
+  guides(color = FALSE)
+```
+
+```{r}
+```
+

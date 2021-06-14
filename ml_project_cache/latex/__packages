@@ -1,0 +1,13 @@
+base
+knitr
+e1071
+ggplot2
+GGally
+class
+randomForest
+reshape2
+lattice
+caret
+ROCR
+yardstick
+gridExtra

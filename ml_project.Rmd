@@ -1,12 +1,12 @@
 ---
-title: "Project in ML"
-author: "Silje Marie Anfindsen"
+title: "~ Comparison between kernelized and non-kernelized methods for classification of diabetes patients ~ "
+author: "Silje Marie Anfindsen & Jonathan Stålberg"
 date: "5/5/2021"
-output: html_document
+output: pdf_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r setup, include=FALSE, message=FALSE}
+library(knitr)
 library(e1071)
 library(ggplot2)
 library(GGally)
@@ -14,27 +14,122 @@ library(class)
 library(randomForest)
 library(reshape2)
 library(caret)
+library(yardstick)
+library(ROCR)
+library(gridExtra)
 
+knitr::opts_chunk$set(echo = FALSE)
 ```
 
-Apply an standard kernel method (SVM, kRR, kPCA, ...) to a specific problem of your interest, with comparison to other approaches.
-The focus is on the application
+\begin{figure}[b]
+  \includegraphics{FME.jpeg}
+\end{figure}
 
-```{r cars}
+\newpage
+
+\abstract{ Summary of the what the report will be about }
+
+\newpage
+
+\tableofcontents 
+
+\newpage
+
+
+# Introduction
+
+https://www.sciencedirect.com/science/article/pii/S2352914819300176
+
+use this one for the introduction and abstract.
+
+Is it possible to build a machine learning model to accurately predict whether or not women have diabetes or not based on their health condition? 
+
+This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. The objective of the dataset is to diagnostically predict whether or not a patient has diabetes, based on certain diagnostic measurements included in the dataset. Several constraints were placed on the selection of these instances from a larger database. In particular, all patients here are females at least 21 years old of Pima Indian heritage.
+
+
+# Previous Work
+What to write here ?
+about the data set? 
+maybe history of the methods.
+
+
+https://www.kaggle.com/sridm2007/svm-with-principal-component-analysis
+https://www.kaggle.com/uciml/pima-indians-diabetes-database
+
+\newpage
+
+
+# Theory
+Theory behind SVM and kernelized methods.
+
+about SVM radial boundary:
+
+https://rstudio-pubs-static.s3.amazonaws.com/296261_b5acc05b2b0e41879c917033b1497543.html
+
+
+\newpage
+
+# Experiments & Discussion
+We will first take a look at the diabetes data that we have chosen to analyse.
+The datasets consists of several medical predictor variables and one target variable, diabetes which is a categorical variable (0,1) for whether a woman has diabetes or not. The predictor variables includes the number of pregnancies the patient has had, their BMI, diagnostic blood pressure, skin thickness insulin level, age, and so on.
+
+```{r load data, message=FALSE, warning=FALSE}
 id <- "1Fv6xwKLSZHldRAC1MrcK2mzdOYnbgv0E"  # google file ID
-d.diabetes <- dget(sprintf("https://docs.google.com/uc?id=%s&export=download", 
-    id))
+d.diabetes <- dget(sprintf("https://docs.google.com/uc?id=%s&export=download", id))
 d.train = d.diabetes$ctrain
 d.test = d.diabetes$ctest
+```
 
+Below is a print-out of the first observations of the data set and a plot displaying the relationship between each variable combination telling us something more about the covariance structure in the data set. 
+
+```{r visualization}
+head(d.train)
+plot(d.train)
+```
+We will now calculate the principal components of the data set in order to visualize the data better.
+```{r pca}
+d.pc <- princomp(d.train[,-1])
+plot(d.pc$scores[,1:2],pch=19,cex=.5, col=d.train$diabetes+2)
+#pairs(d.pc$scores[,1:4], pch=19,cex=.5,col=d.train$diabetes+1) #all the PCs
+```
+We notice that the observations in the training set can be separated quite well using the first two PCs. 
+
+```{r pve, message=FALSE, warning=FALSE}
+pr.var <- d.pc$sdev^2
+pve <- pr.var/sum(pr.var)
+kable(pve*100, col.names="Proportion of variance explained (%)")
+```
+Now, in order to learn if the two first PCs manage to explain enough of the information in the model we look at the proportion of variance explained by all the eight PCs. Notice that the first two components together explain approxiatly $84\%$ of the variance in the data set which we can be quite satisfied with at least for the next task. We will try to fit a suitable margin to the data to try if we can classify the diabetes status of a patient based on the information we have from the two first PCs.
+
+
+First find a linear margin to separate the data points using SVM with linear kernel function and then a non-linear margin using SVM with radial kernel function.
+
+```{r linear svm}
+df <- data.frame(x = d.pc$scores[,1:2], y = as.factor(d.train$diabetes))
+#linear bounary
+svm.linear <- svm(y ~ ., data=df, kernel="linear", type='C-classification')
+plot(svm.linear, df, col = c("lightblue", "lightgreen"))
+#radial boundary
+svm.radial <- svm(y ~ ., data=df, kernel="radial", type='C-classification')
+plot(svm.radial, df, col = c("lightblue", "lightgreen"))
+par(mfrow=c(1,2))
+```
+The plots above show all the observations we have from the 300 patients in the training set. The crosses are the support vectors and the boundary between the green and blue colors is the linear boundary from the classifier. We notice that both margins manages to separate most of the training observations quite well.
+
+Now let us go back to using the full data set and not only the first two principal components as we now are going to compare the SVM with radial boundary with other known machine learning methods.
+
+```{r make factor}
 #make diabetes a factor variable
 d.train$diabetes <- as.factor(d.train$diabetes)
 d.test$diabetes <- as.factor(d.test$diabetes)
-
-plot(d.train)
 ```
-```{r svm}
 
+Recall that the SVM with radial boundary has two parameters. The cost which controls the trade-off between margin maximization and error minimization. The other parameter is often called a kernel parameter, $\gamma$ which is a tuning parameter accounting for the smoothness of the decision boundary as well as the variance of the model. With a large $\gamma$  we get a wiggly decision boundary giving us high variance and possibly overfitting while for too small $\gamma$  the boundary is smoother but with lower variance.
+
+We start by choosing the parameters for the SVM with radial kernel function by using 10-fold cross validation. 
+To get an idea on how the two parameters influence the training set accuracy, we plot the cross-validation accuracy as a function of the cost, with separate lines for each value of $\gamma$. 
+
+```{r cv for svm, cache=TRUE}
 set.seed(10111)
 start_time <- Sys.time()
 
@@ -42,15 +137,22 @@ start_time <- Sys.time()
 cv.radial <- tune(svm, diabetes ~., data = d.train, kernel = "radial",
                   ranges = list(cost = c(0.1,1,10,100,1000), gamma = c(0.5,1,2,3,4) ))
 end_time <- Sys.time()
-end_time - start_time
+svm.rad.time <-end_time - start_time
+```
+
+```{r}
 #plot different values for the two hyperparameters
 svm.performance <- cv.radial$performances
 svm.performance$cost <- as.factor(svm.performance$cost)
 ggplot(svm.performance, aes(x=gamma,y=error, color=cost)) +
   geom_line()
+```
+ 
+From the plot above we notice that the most optimal cost is clearly $1$ as it gives a small error for small  $\gamma$ approx. $0.5$. Thus we choose these values for our hyper parameters when fitting the model with radial boundary. 
 
-#ggpairs(d.train, aes(colour = diabetes, alpha = 0.4))
+Next we will also fit a support vector with linear kernel function using CV to find the optimal hyper parmeters as we did above. In addition to the two SVMs we will fit a more statistical classification method, logistic regression and at last k-nearest neighbours.
 
+```{r rad svm, cahche=TRUE, warning=FALSE}
 #fit new models with the optimalized parameters from CV
 bestmod.radial = cv.radial$best.model 
 
@@ -58,45 +160,65 @@ bestmod.radial = cv.radial$best.model
 pred.rad = predict(bestmod.radial, newdata = d.test)
 
 # Confusion tables (0: no diabetes, 1: diabetes) 
-t <- table(Prediction = pred.rad, Truth = d.test$diabetes)
-t
+t.svm.rad <- table(Prediction =pred.rad, Truth = d.test$diabetes)
+cm.svm.rad <-conf_mat(t.svm.rad, d.test)
+cplot.svm.rad <- autoplot(cm.svm.rad, type = "heatmap") + scale_fill_gradient(low="#D6EAF8",high = "#2E86C1")+ theme(legend.position = "right") +  ggtitle("Confusion table for SVM radial kernel")
+
 #can calculate sensitivity and specificity later
-svm_acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
-svm_acc
+svm.rad.acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
 ```
- To get an idea on how C and sigma influence the training set accuracy, we plot the cross-validation accuracy as a function of C, with separate lines for each value of sigma.
- 
 
-We will now compare the performance of the support vector classifier and support vector machine with a new method: logistic regression. As we have observed above, our data seems to performe well when being classified with a linear decision boundary. Logistic regression models the probability that the response belongs to one of the two classes, producing a linear decision boundary. Therefore this method seems to be a good choice for our data.
+```{r lin svm, cache=TRUE}
+#10-fold CV to test model fit svm radial boundary with different parameters
+start_time <- Sys.time()
+cv.lin <- tune(svm, diabetes ~., data = d.train, kernel = "linear")
+end_time <- Sys.time()
+svm.lin.time <-end_time - start_time
+#fit new models with the optimalized parameters from CV
+bestmod.lin= cv.lin$best.model
 
-```{r logistic regression}
+# Predict the response for the test set  
+pred.lin = predict(bestmod.lin, newdata = d.test)
+
+# Confusion tables (0: no diabetes, 1: diabetes) 
+t.svm.lin <- table(Prediction =pred.lin, Truth = d.test$diabetes)
+cm.svm.lin <-conf_mat(t.svm.lin, d.test)#FFD733
+cplot.svm.lin <- autoplot(cm.svm.lin, type = "heatmap") + scale_fill_gradient(low="#FFD733",high = "#FF5733")+ theme(legend.position = "right") +  ggtitle("Confusion table for SVM linear kernel")
+
+#accuracy
+svm.lin.acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
+```
+
+```{r logistic regression, cache=TRUE}
 #fit a logistic regression model using training data
 start_time <- Sys.time()
 
 glm.fit <- glm(diabetes ~ .,data=d.train, family="binomial") #predict the response using testing data
 end_time <- Sys.time()
-end_time - start_time
+glm.time <-  end_time - start_time
+
 glm.probs <- predict(glm.fit, newdata=d.test, type="response")
 
 #sort the probabilities for whether the observations are < or > than p = 0.5
 glm.pred = rep("0",length(d.test$diabetes)) 
 #create vector of nr. of elements = dataset 
 glm.pred[glm.probs>0.5]="1"
+
 #confusion table
-table(Prediction = glm.pred, Truth = d.test$diabetes)
-glm_ACC <- 100 * sum(d.test$diabetes == glm.pred)/NROW(d.test$diabetes)
-glm_ACC
+t.glm <-table(Prediction = glm.pred, Truth = d.test$diabetes)
+cm.glm <-conf_mat(t.glm, d.test)#FFD733
+cplot.glm <- autoplot(cm.glm, type = "heatmap") + scale_fill_gradient(low="#E5BCF9",high = "#AC0CF6")+ theme(legend.position = "right") +  ggtitle("Confusion table for logistic regression")
+
+glm.acc <- 100 * sum(d.test$diabetes == glm.pred)/NROW(d.test$diabetes)
 ```
 
+Some explanation for why we choose K here....
 
-In logistic regression all observations contribute to the decision boundary, while for SVMs, only the support vectors (the points closest to the decision boundary) contribute to the margin. A consequence of this is that LR is more sensitive to outliers than SVM. For classes that are well separeted SVM tend to perform better than LR, while in more overlapping regimes we usually prefer LR. We also know that logistic regression produces probabilistic values, while SVM produces binary values. This can be an advantage if we want an estimation rather than just the resulting class for each observation.
-
-
-```{r}
+```{r knn, cache=TRUE}
 start_time <- Sys.time()
-cv.knn <- tune.knn(y=d.train$diabetes,x=d.train[,2:8], data = d.train,k = 1:100, tunecontrol=tune.control(sampling="cross"), cross=10 )
+cv.knn <- tune.knn(y=d.train$diabetes,x=d.train[,-1], data = d.train,k = 1:100, tunecontrol=tune.control(sampling="cross"), cross=10 )
 end_time <- Sys.time()
-end_time - start_time
+knn.time <- end_time - start_time
 plot(cv.knn)
 cv.knn$best.parameters
 
@@ -105,93 +227,60 @@ knn.fit <- cv.knn$best.model
 #Summarize the resampling results set
 pred.knn <- knn(train=d.train, test=d.test,cl=d.train$diabetes, k=cv.knn$best.parameters)
 
-# Confusion tables (0: no diabetes, 1: diabetes) 
-table(Prediction = pred.knn, Truth = d.test$diabetes)
+# Confusion tables (0: no diabetes, 1: diabetes)
+t.knn <-  table(Prediction = pred.knn, Truth = d.test$diabetes)
+cm.knn <-conf_mat(t.knn, d.test)#FFD733
+cplot.knn <- autoplot(cm.knn, type = "heatmap") + scale_fill_gradient(low="#D8FAB4",high = "#18870B")+ theme(legend.position = "right") +  ggtitle("Confusion table for KNN")
 
-knn_ACC <- 100 * sum(d.test$diabetes == pred.knn)/NROW(d.test$diabetes)
-knn_ACC
+knn.acc <- 100 * sum(d.test$diabetes == pred.knn)/NROW(d.test$diabetes)
+```
+We will first look at the different confusion tables and accuracy measures for the four chosen models used. The accuracy measures how many observations, both positive and negative that were correctly classified.
+
+```{r comparing methods}
+grid.arrange(cplot.svm.rad, cplot.svm.lin,cplot.glm, cplot.knn)
+r <- rbind(svm.rad.acc, svm.lin.acc,glm.acc, knn.acc)
+kable(r, col.names="Accuracy")
+```
+The confusion matrices show us that KNN seems to do a fairly better job classifying both true positive and true negative observations with logistic regression right behind. The two SVMs are managing to catch the true negative quite good, meaning that patients which does not have diabetes are more easily concluded to not not have diabetes compared to patients who actually have diabetes.
+
+We will now take a closer look at the relationship between the True and false positive rate from the confusion matrices using a ROC curve. The ROC curve is a chart that visualizes the trade-off between true positive rate (TPR) and false positive rate (FPR). Here the green line is the logistic regression model, the brown is KNN while the red line is the SVM with linear kernel and the blue line is the SVM with green kernel. The higher TPR and the lower FPR is the better and so classifiers that have curves that are more top-left side are better.
+
+```{r ROC for SVMs vs. glm}
+pred.rad=prediction(as.numeric(pred.rad) ,as.numeric(d.test$diabetes))
+perf.rad=performance(pred.rad,"tpr","fpr")
+
+pred.lin = prediction(as.numeric(pred.lin) ,as.numeric(d.test$diabetes))
+perf.lin = performance(pred.lin,"tpr","fpr")
+
+pred.glm = prediction(as.numeric(glm.pred) ,as.numeric(d.test$diabetes))
+perf.glm = performance(pred.glm,"tpr","fpr")
+
+pred.knn = prediction(as.numeric(pred.knn) ,as.numeric(d.test$diabetes))
+perf.knn = performance(pred.knn,"tpr","fpr")
+
+#svm radial kernel
+plot(perf.rad, col="deepskyblue", 
+     main="ROC curves",xlab="False Positive Rate", ylab="True Positive Rate",type="o", pch=16);abline(0,1);grid()
+
+plot(perf.lin, add = TRUE, col = "red", ,type="o", pch=16) #svm linear kernel
+plot(perf.glm, add = TRUE, col = "green", ,type="o", pch=16) #logistic reg
+plot(perf.knn, add = TRUE, col = "brown", ,type="o", pch=16) #knn)
+```
+We notice here that the SVM with radial boundary actually is beaten by the two linear approaches. Meaning, in this case the kernelized method is actually doing a worse job. All over we can also say that the curve is a bit far away from being in the top-left corner giving a high True Positive Rate and low False Positive Rate for any of the methods.
+
+We can also take a look at the times spent for the four methods. Notice that the SVM with radial boundary actually spends remarkable more time to do the CV and fit the best model with optimal parameters compared to the other non-kernelized approaches. 
+```{r comparing times}
+time <- rbind(svm.rad.time, svm.lin.time, glm.time, knn.time)
+kable(time, col.names="Time spent")
 
 ```
 
-```{r}
-#randomforest
-rf.diabetes = randomForest(diabetes ~ ., data = d.train)
-pred.rf= predict(rf.diabetes, newdata=d.test)
-rf_table <- table(prediction=pred.rf, Truth=d.test$diabetes)
-rf_ACC <- 100 * sum(d.test$diabetes == pred.rf)/NROW(d.test$diabetes)
-```
 
-```{r}
-control <- trainControl(method="repeatedcv", number=10, repeats=3)
-# CART
-set.seed(7)
-fit.cart <- train(diabetes~., data=d.train, method="rpart", trControl=control)
-# LDA
-set.seed(7)
-fit.lda <- train(diabetes~., data=d.train, method="lda", trControl=control)
-# SVM
-set.seed(7)
-fit.svm <- train(diabetes~., data=d.train, method="svmRadial", trControl=control)
-# kNN
-set.seed(7)
-fit.knn <- train(diabetes~., data=d.train, method="knn", trControl=control)
-# Random Forest
-set.seed(7)
-fit.rf <- train(diabetes~., data=d.train, method="rf", trControl=control)
-# collect resamples
-results <- resamples(list(CART=fit.cart, LDA=fit.lda, SVM=fit.svm, KNN=fit.knn, RF=fit.rf))
-```
-
-```{r}
-	
-# summarize differences between modes
-summary(results)
-````
-
-This is a useful way to look at the spread of the estimated accuracies for different methods and how they relate
-
-```{r}
-# box and whisker plots to compare models
-scales <- list(x=list(relation="free"), y=list(relation="free"))
-bwplot(results, scales=scales)
-
-```
-Note that the boxes are ordered from highest to lowest mean accuracy. I find it useful to look at the mean values (dots) and the overlaps of the boxes (middle 50% of results).
-
-DENSITY PLOTS
-You can show the distribution of model accuracy as density plots. This is a useful way to evaluate the overlap in the estimated behavior of algorithms.
-```{r}
-
-# density plots of accuracy
-scales <- list(x=list(relation="free"), y=list(relation="free"))
-densityplot(results, scales=scales, pch = "|")
-```
-I like to look at the differences in the peaks as well as the spread or base of the distributions.
-
-```{r}
-
-# difference in model predictions
-diffs <- diff(results)
-# summarize p-values for pair-wise comparisons
-summary(diffs)
-```
+In logistic regression all observations contribute to the decision boundary, while for SVMs, only the support vectors (the points closest to the decision boundary) contribute to the margin. A consequence of this is that LR is more sensitive to outliers than SVM. For classes that are well separeted SVM tend to perform better than LR, while in more overlapping regimes we usually prefer LR. We also know that logistic regression produces probabilistic values, while SVM produces binary values. This can be an advantage if we want an estimation rather than just the resulting class for each observation.
 
 
-```{r}
+\newpage
 
-accuracy_variables = names(results$values)[grepl("Accuracy", names(results$values))]
-plotdf = melt(results$values[, c('Resample', accuracy_variables)],
-              id = "Resample", value.name = "Accuracy", variable.name = "Model")
-plotdf$Model = gsub("~.*","", plotdf$Model)
+We will now compare the performance of the support vector classifier and support vector machine with a new method: logistic regression. As we have observed above, our data seems to performe well when being classified timeith a linear decision boundary. Logistic regression models the probability that the response belongs to one of the two classes, producing a linear decision boundary. Therefore this method seems to be a good choice for our data.
 
-ggplot() +
-  geom_boxplot(data = plotdf, aes(x = Model, y = Accuracy, color = Model)) +
-  ggtitle('Resampled accuracy for machine learning models estimated') + 
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + 
-  labs(x = NULL, color = NULL) +
-  guides(color = FALSE)
-```
-
-```{r}
-```
-
+# Conclusion and future work

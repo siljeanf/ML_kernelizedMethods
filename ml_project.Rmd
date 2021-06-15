@@ -25,53 +25,38 @@ knitr::opts_chunk$set(echo = FALSE)
   \includegraphics{FME.jpeg}
 \end{figure}
 
-\newpage
-
-\abstract{ Summary of the what the report will be about }
+\abstract{ In this report we will focus on the comparison of different kernelized and non-kernelized methods. We will do the comparison by using a diabetes data set with the label 0 if the women didn't have diabetes and label 1 if she had it. In this report we will focus on the accuracy and the computational time for k-nearest neighbours, SVM with linear kernel, SVM with radial kernel and logistic regression. For this data set we found out that KNN had the highest accuracy and the general logistic regression had the best accuracy combined with computational time. }
 
 \newpage
 
 \tableofcontents 
 
-\newpage
-
 
 # Introduction
 
-https://www.sciencedirect.com/science/article/pii/S2352914819300176
-
-use this one for the introduction and abstract.
-
 Is it possible to build a machine learning model to accurately predict whether or not women have diabetes or not based on their health condition? 
 
-This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. The objective of the dataset is to diagnostically predict whether or not a patient has diabetes, based on certain diagnostic measurements included in the dataset. Several constraints were placed on the selection of these instances from a larger database. In particular, all patients here are females at least 21 years old of Pima Indian heritage.
+Diabetes is a common, chronic disease caused by the fact that the body does not have enough insulin. The symptoms are not always easy to detect and connect to the disease. Approximately 5 million of the 18 million people with diabetes in the U.S. do not know they have it. With proper diet and medication the danger of the disease can be managed. But then the patient has to know if it has diabetes.
 
-
-# Previous Work
-What to write here ?
-about the data set? 
-maybe history of the methods.
-
-
-https://www.kaggle.com/sridm2007/svm-with-principal-component-analysis
-https://www.kaggle.com/uciml/pima-indians-diabetes-database
-
-\newpage
+Early detection and treatment of diabetes is an important step toward keeping people with diabetes healthy. It can help to reduce the risk of serious complications such as premature heart disease and stroke, blindness, limb amputations, and kidney failure. Thus prediction of diabetes at an early stage can lead to improved treatment
 
 
 # Theory
-Theory behind SVM and kernelized methods.
+We will focus on 3 different methods and they will all be described below. 
 
-about SVM radial boundary:
+K-nearest neighbours (KNN) is a classification method that calculates the distance to a fix parameter k number of neighbours. When the new point have identified which are the k nearest neighbour it checks which of the two classes that are most represented by the neighbours and then classifies the new point to that class.  
 
-https://rstudio-pubs-static.s3.amazonaws.com/296261_b5acc05b2b0e41879c917033b1497543.html
+Logistic regression is also a classification method that is used to calculate the probability of a class, usually a 0/1-relationship, given several parameters. When a new observation is given, the model calculates the probability for the observation to belonging to each of the classes and from that we can classify the new observation.
 
+SVM is a supervised learning model that aims to find a optimal hyperplane which can be used to classify new data points into the correct class. This is done by measuring the similarities between points from the two classes. The most similar examples between the classes are chosen to be the support vectors which decide the position of the margin that separates the classes. In order to make the classifier more predictable for new data points the SVM can allow margin violations, this is done through the cost parameter. SVM can be used for both non-linear and linear data sets. For the non-linear sets we need to map the data into a higher dimensional feature space until the classes are linearly separable, thus we need to make us of the kernel trick to avoid alot of work and storage need for our model.
+
+There are several reasons to choose wisely which kernel to use. A linear kernel gives us the linear SVM which is a parametric model. Compared to for example an RBF kernel SVM the latter is more expensive to train as it has to keep the kernel matrix around and the projection into this higher dimensional space. There are also more hyperparameters to tune, for example gamma which measures how far the influence of a single training example reaches. Thus it is important to know which kernel function to choose to save possible work.
 
 \newpage
 
 # Experiments & Discussion
-We will first take a look at the diabetes data that we have chosen to analyse.
-The datasets consists of several medical predictor variables and one target variable, diabetes which is a categorical variable (0,1) for whether a woman has diabetes or not. The predictor variables includes the number of pregnancies the patient has had, their BMI, diagnostic blood pressure, skin thickness insulin level, age, and so on.
+This dataset is originally from the National Institute of Diabetes and Digestive and Kidney Diseases. The objective of the dataset is to diagnostically predict whether or not a patient has diabetes (0 or 1)  based on certain diagnostic measurements included in the dataset. Several constraints were placed on the selection of these instances from a larger database. The predictor variables includes the number of pregnancies the patient has had, their BMI, diagnostic blood pressure, skin thickness insulin level, age, and so on.
+
 
 ```{r load data, message=FALSE, warning=FALSE}
 id <- "1Fv6xwKLSZHldRAC1MrcK2mzdOYnbgv0E"  # google file ID
@@ -99,8 +84,7 @@ pr.var <- d.pc$sdev^2
 pve <- pr.var/sum(pr.var)
 kable(pve*100, col.names="Proportion of variance explained (%)")
 ```
-Now, in order to learn if the two first PCs manage to explain enough of the information in the model we look at the proportion of variance explained by all the eight PCs. Notice that the first two components together explain approxiatly $84\%$ of the variance in the data set which we can be quite satisfied with at least for the next task. We will try to fit a suitable margin to the data to try if we can classify the diabetes status of a patient based on the information we have from the two first PCs.
-
+Now, in order to learn if the two first PCs manage to explain enough of the information in the model we look at the proportion of variance explained by all the eight PCs. Notice that the first two components together explain approximately $84\%$ of the variance in the data set which we can be quite satisfied with at least for the next task. We will try to fit a suitable margin to the data to try if we can classify the diabetes status of a patient based on the information we have from the two first PCs.
 
 First find a linear margin to separate the data points using SVM with linear kernel function and then a non-linear margin using SVM with radial kernel function.
 
@@ -116,7 +100,7 @@ par(mfrow=c(1,2))
 ```
 The plots above show all the observations we have from the 300 patients in the training set. The crosses are the support vectors and the boundary between the green and blue colors is the linear boundary from the classifier. We notice that both margins manages to separate most of the training observations quite well.
 
-Now let us go back to using the full data set and not only the first two principal components as we now are going to compare the SVM with radial boundary with other known machine learning methods.
+Now let us go back to using the full data set and not only the first two principal components as we now are going to compare the SVM with linear and radial boundary with other known machine learning methods.
 
 ```{r make factor}
 #make diabetes a factor variable
@@ -124,12 +108,12 @@ d.train$diabetes <- as.factor(d.train$diabetes)
 d.test$diabetes <- as.factor(d.test$diabetes)
 ```
 
-Recall that the SVM with radial boundary has two parameters. The cost which controls the trade-off between margin maximization and error minimization. The other parameter is often called a kernel parameter, $\gamma$ which is a tuning parameter accounting for the smoothness of the decision boundary as well as the variance of the model. With a large $\gamma$  we get a wiggly decision boundary giving us high variance and possibly overfitting while for too small $\gamma$  the boundary is smoother but with lower variance.
+Recall that the SVM with radial boundary has two parameters. The cost which controls the trade-off between margin maximization and error minimization. The other parameter $\gamma$ is a tuning parameter accounting for the smoothness of the decision boundary as well as the variance of the model. With a large $\gamma$  we get a wiggly decision boundary giving us high variance and possibly overfitting while for too small $\gamma$  the boundary is smoother but with lower variance.
 
 We start by choosing the parameters for the SVM with radial kernel function by using 10-fold cross validation. 
 To get an idea on how the two parameters influence the training set accuracy, we plot the cross-validation accuracy as a function of the cost, with separate lines for each value of $\gamma$. 
 
-```{r cv for svm, cache=TRUE}
+```{r cv for svm, cache=TRUE, message=FALSE, warning=FALSE}
 set.seed(10111)
 start_time <- Sys.time()
 
@@ -150,7 +134,7 @@ ggplot(svm.performance, aes(x=gamma,y=error, color=cost)) +
  
 From the plot above we notice that the most optimal cost is clearly $1$ as it gives a small error for small  $\gamma$ approx. $0.5$. Thus we choose these values for our hyper parameters when fitting the model with radial boundary. 
 
-Next we will also fit a support vector with linear kernel function using CV to find the optimal hyper parmeters as we did above. In addition to the two SVMs we will fit a more statistical classification method, logistic regression and at last k-nearest neighbours.
+Next we will also fit a support vector with linear kernel function using CV to find the optimal hyper parameters as we did above. In addition to the two SVMs we will fit a more statistical classification method, logistic regression and at last k-nearest neighbours.
 
 ```{r rad svm, cahche=TRUE, warning=FALSE}
 #fit new models with the optimalized parameters from CV
@@ -168,7 +152,7 @@ cplot.svm.rad <- autoplot(cm.svm.rad, type = "heatmap") + scale_fill_gradient(lo
 svm.rad.acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
 ```
 
-```{r lin svm, cache=TRUE}
+```{r lin svm, cache=TRUE, message=FALSE, warning=FALSE}
 #10-fold CV to test model fit svm radial boundary with different parameters
 start_time <- Sys.time()
 cv.lin <- tune(svm, diabetes ~., data = d.train, kernel = "linear")
@@ -189,7 +173,7 @@ cplot.svm.lin <- autoplot(cm.svm.lin, type = "heatmap") + scale_fill_gradient(lo
 svm.lin.acc <- 100 * sum(d.test$diabetes == pred.rad)/NROW(d.test$diabetes)
 ```
 
-```{r logistic regression, cache=TRUE}
+```{r logistic regression, cache=TRUE, message=FALSE, warning=FALSE}
 #fit a logistic regression model using training data
 start_time <- Sys.time()
 
@@ -212,15 +196,15 @@ cplot.glm <- autoplot(cm.glm, type = "heatmap") + scale_fill_gradient(low="#E5BC
 glm.acc <- 100 * sum(d.test$diabetes == glm.pred)/NROW(d.test$diabetes)
 ```
 
-Some explanation for why we choose K here....
+In order to choose the optimal number of $k$ neighbours to fit the classifier with we use cross validation and plot the error for different $k$. We notice that the optimal $k$ is $45$.
 
-```{r knn, cache=TRUE}
+```{r knn, cache=TRUE, message=FALSE, warning=FALSE}
 start_time <- Sys.time()
 cv.knn <- tune.knn(y=d.train$diabetes,x=d.train[,-1], data = d.train,k = 1:100, tunecontrol=tune.control(sampling="cross"), cross=10 )
 end_time <- Sys.time()
 knn.time <- end_time - start_time
 plot(cv.knn)
-cv.knn$best.parameters
+#cv.knn$best.parameters
 
 knn.fit <- cv.knn$best.model
 
@@ -234,16 +218,17 @@ cplot.knn <- autoplot(cm.knn, type = "heatmap") + scale_fill_gradient(low="#D8FA
 
 knn.acc <- 100 * sum(d.test$diabetes == pred.knn)/NROW(d.test$diabetes)
 ```
-We will first look at the different confusion tables and accuracy measures for the four chosen models used. The accuracy measures how many observations, both positive and negative that were correctly classified.
+To compare the four models we will first look at the different confusion tables and accuracy measures for the four chosen models used. The accuracy measures how many observations, both positive and negative that were correctly classified.
 
 ```{r comparing methods}
 grid.arrange(cplot.svm.rad, cplot.svm.lin,cplot.glm, cplot.knn)
 r <- rbind(svm.rad.acc, svm.lin.acc,glm.acc, knn.acc)
 kable(r, col.names="Accuracy")
 ```
+
 The confusion matrices show us that KNN seems to do a fairly better job classifying both true positive and true negative observations with logistic regression right behind. The two SVMs are managing to catch the true negative quite good, meaning that patients which does not have diabetes are more easily concluded to not not have diabetes compared to patients who actually have diabetes.
 
-We will now take a closer look at the relationship between the True and false positive rate from the confusion matrices using a ROC curve. The ROC curve is a chart that visualizes the trade-off between true positive rate (TPR) and false positive rate (FPR). Here the green line is the logistic regression model, the brown is KNN while the red line is the SVM with linear kernel and the blue line is the SVM with green kernel. The higher TPR and the lower FPR is the better and so classifiers that have curves that are more top-left side are better.
+We will now take a closer look at the relationship between the True and false positive rate from the confusion matrices using a ROC curve. The ROC curve is a chart that visualizes the trade-off between true positive rate (TPR) and false positive rate (FPR). Here the green line is the logistic regression model, the brown is KNN while the red line is the SVM with linear kernel and the blue line is the SVM with radial kernel. The higher TPR and the lower FPR is the better and so classifiers that have curves that are more top-left side are better.
 
 ```{r ROC for SVMs vs. glm}
 pred.rad=prediction(as.numeric(pred.rad) ,as.numeric(d.test$diabetes))
@@ -268,19 +253,17 @@ plot(perf.knn, add = TRUE, col = "brown", ,type="o", pch=16) #knn)
 ```
 We notice here that the SVM with radial boundary actually is beaten by the two linear approaches. Meaning, in this case the kernelized method is actually doing a worse job. All over we can also say that the curve is a bit far away from being in the top-left corner giving a high True Positive Rate and low False Positive Rate for any of the methods.
 
-We can also take a look at the times spent for the four methods. Notice that the SVM with radial boundary actually spends remarkable more time to do the CV and fit the best model with optimal parameters compared to the other non-kernelized approaches. 
+We can also take a look at the times spent for the four methods. Notice that the SVM with radial boundary actually spends remarkable more time to do the CV and fit the best model with optimal parameters compared to the other non-kernelized approaches. Also KNN use a lot more time then the fastest algorithm logistic regression. 
+
 ```{r comparing times}
 time <- rbind(svm.rad.time, svm.lin.time, glm.time, knn.time)
 kable(time, col.names="Time spent")
 
 ```
 
+Based on both the accuracy of prediction and time spent logistic regression seems to be a good choice as a classifier for this data set. In logistic regression all observations contribute to the decision boundary, while for SVMs, only the support vectors contribute to the margin. A consequence of this is that LR is more sensitive to outliers than SVM. For classes that are well separeted SVM tend to perform better than LR, while in more overlapping regimes we usually prefer LR. We also know that logistic regression produces probabilistic values, while SVM produces binary values. This can be an advantage if we want an estimation rather than just the resulting class for each observation. 
 
-In logistic regression all observations contribute to the decision boundary, while for SVMs, only the support vectors (the points closest to the decision boundary) contribute to the margin. A consequence of this is that LR is more sensitive to outliers than SVM. For classes that are well separeted SVM tend to perform better than LR, while in more overlapping regimes we usually prefer LR. We also know that logistic regression produces probabilistic values, while SVM produces binary values. This can be an advantage if we want an estimation rather than just the resulting class for each observation.
 
+# Conclusion
 
-\newpage
-
-We will now compare the performance of the support vector classifier and support vector machine with a new method: logistic regression. As we have observed above, our data seems to performe well when being classified timeith a linear decision boundary. Logistic regression models the probability that the response belongs to one of the two classes, producing a linear decision boundary. Therefore this method seems to be a good choice for our data.
-
-# Conclusion and future work
+Our conclusion for this report is that knn is the best model to fit to this particular dataset and that logistic regression is the best if you want to consider both time and accuracy. This can seem surprising since generally you find kernelized methods that have better accuracy than non-kernelized. This conclusion may be from two reasons, one is basically that the kernelized methods we choose are not the best fit to this dataset and the second one is that sometimes LR performes better than SVM when the data is not so easily seperable.
